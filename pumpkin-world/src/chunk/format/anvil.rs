@@ -517,8 +517,8 @@ impl<S: SingleChunkDataSerializer> ChunkSerializer for AnvilChunkFile<S> {
 
     type ChunkConfig = AnvilChunkConfig;
 
-    fn should_write(&self, is_watched: bool) -> bool {
-        !is_watched
+    fn should_write(&self, _is_watched: bool) -> bool {
+        true // Anvil supports partial writes, safe to flush even if watched
     }
 
     fn get_chunk_key(chunk: &Vector2<i32>) -> String {

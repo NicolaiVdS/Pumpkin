@@ -589,6 +589,13 @@ impl GenerationSchedule {
         for pos in unload_chunks {
             let holder = self.chunk_map.get_mut(&pos).unwrap();
             debug_assert_eq!(holder.target_stage, StagedChunkEnum::None);
+
+            // Prevent unloading if still needed as a generation dependency
+            if holder.dependency_stage != StagedChunkEnum::None {
+                self.unload_chunks.insert(pos);
+                continue;
+            }
+
             if holder.occupied.is_null() {
                 let mut tmp = None;
                 swap(&mut holder.chunk, &mut tmp);

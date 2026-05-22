@@ -324,7 +324,10 @@ impl Level {
 
         info!("Flushing data to disk for {}...", world_id);
         self.chunk_saver.block_and_await_ongoing_tasks().await;
+        self.chunk_saver.flush_all().await;
+
         self.entity_saver.block_and_await_ongoing_tasks().await;
+        self.entity_saver.flush_all().await;
 
         // save all chunks currently in memory
         let chunks_to_write = self

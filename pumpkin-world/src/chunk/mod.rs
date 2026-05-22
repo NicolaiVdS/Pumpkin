@@ -599,6 +599,7 @@ impl ChunkData {
         if old != block_state_id {
             let state = BlockState::from_id(block_state_id);
             self.update_heightmap(relative_x, relative_y, relative_z, state);
+            self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
         }
         old
     }
@@ -655,6 +656,7 @@ impl ChunkData {
     ) {
         let state = BlockState::from_id(block_state_id);
         self.update_heightmap(relative_x, relative_y, relative_z, state);
+        self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
         self.section
             .set_relative_block(relative_x, relative_y, relative_z, block_state_id);
     }
@@ -674,6 +676,7 @@ impl ChunkData {
     ) {
         self.section
             .set_relative_block(relative_x, relative_y, relative_z, block_state_id);
+        self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     //TODO: Tracking heightmaps update.

@@ -382,7 +382,7 @@ impl<S: SingleChunkDataSerializer> ChunkSerializer for LinearV2File<S> {
     type ChunkConfig = ();
 
     fn should_write(&self, is_watched: bool) -> bool {
-        !is_watched
+        !is_watched // Linear rewrites whole region, only when unwatched
     }
 
     fn get_chunk_key(chunk: &Vector2<i32>) -> String {

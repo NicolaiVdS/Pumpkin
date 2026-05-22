@@ -347,49 +347,40 @@ where
                         }
                     };
 
+                    let mut any_dirty = false;
                     {
                         let mut writer = chunk_serializer.write().await;
                         for chunk in &chunk_locks {
-                            // Atomically snapshot and clear the dirty flag before we
-                            // write so that any mutation that races in *during* this
-                            // serialisation round will mark dirty again correctly.
                             let was_dirty = chunk.is_dirty();
                             chunk.mark_dirty(false);
-
                             if was_dirty {
+                                any_dirty = true;
                                 writer.update_chunk(&**chunk, &self.chunk_config).await?;
                             }
                         }
-                        // Write-lock released here — flush can proceed under a read-lock.
                     }
 
                     trace!("Chunk data updated for {}", path.display());
 
-                    // We check watchers *after* releasing the write-lock to honour
-                    // lock ordering (serializer lock → watchers, never the reverse).
-                    let is_watched = {
-                        let watchers = self.watchers.read().await;
-                        watchers.get(&path).is_some_and(|&c| c > 0)
-                    };
+                    if any_dirty {
+                        let still_watched = {
+                            let watchers = self.watchers.read().await;
+                            watchers.get(&path).is_some_and(|&c| c > 0)
+                        };
 
-                    if !is_watched {
-                        // A read-lock suffices for `write()` since we have already
-                        // applied all mutations above.
-                        {
-                            let serializer = chunk_serializer.read().await;
-                            debug!("Flushing {} to disk", path.display());
+                        let serializer = chunk_serializer.read().await;
+                        if serializer.should_write(still_watched) {
+                            debug!("Flushing {} to disk (dirty chunks present)", path.display());
                             serializer
                                 .write(&path)
                                 .await
                                 .map_err(ChunkWritingError::IoError)?;
-                            // Read-lock released here.
-                        };
-
-                        // Drop our handle so `can_remove` may succeed.
-                        drop(chunk_serializer);
-
-                        // Evict the cache entry when no longer needed.
-                        self.maybe_evict(&path).await;
+                            drop(serializer);
+                            drop(chunk_serializer);
+                            self.maybe_evict(&path).await;
+                        } else {
+                            drop(serializer);
+                        }
                     }
 
                     Ok(())
@@ -427,6 +418,40 @@ where
             });
 
             join_all(drain_tasks).await;
+        })
+    }
+
+    fn flush_all(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async move {
+            // Snapshot all loaders under a read lock
+            let loaders: Vec<Arc<ChunkSerializerLazyLoader<S>>> = {
+                let locks = self.file_locks.read().await;
+                locks.values().cloned().collect()
+            };
+
+            for loader in loaders {
+                // Get the serializer if it has been initialised
+                let serializer_arc = match loader.internal.get() {
+                    Some(arc) => arc,
+                    None => continue,
+                };
+
+                // Acquire a read lock (does not block ongoing writes)
+                let serializer = serializer_arc.read().await;
+                let path = &loader.path;
+
+                if let Err(e) = serializer.write(path).await {
+                    error!("Failed to force-write region {}: {}", path.display(), e);
+                }
+
+                // Drop the read lock before attempting to remove from cache
+                drop(serializer);
+                let _ = serializer_arc;
+
+                // remove the loader from the cache (force evict)
+                let mut locks = self.file_locks.write().await;
+                locks.remove(path);
+            }
         })
     }
 }

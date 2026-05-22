@@ -87,6 +87,10 @@ where
 
     /// Ensure that all ongoing operations are finished
     fn block_and_await_ongoing_tasks(&self) -> BoxFuture<'_, ()>;
+
+    /// Force-write all cached regions to disk, regardless of watchers or dirty state.
+    /// Used during server shutdown to persist all in memory changes.
+    fn flush_all(&self) -> BoxFuture<'_, ()>;
 }
 
 /// Trait to serialize and deserialize the chunk data to and from bytes.

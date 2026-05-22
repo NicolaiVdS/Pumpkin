@@ -46,8 +46,8 @@ where
         format!("r.{region_x}.{region_z}.pump")
     }
 
-    fn should_write(&self, _is_watched: bool) -> bool {
-        true
+    fn should_write(&self, is_watched: bool) -> bool {
+        !is_watched // Pump rewrites whole region, only when unwatched
     }
 
     async fn write(&self, backend: &Self::WriteBackend) -> Result<(), std::io::Error> {
